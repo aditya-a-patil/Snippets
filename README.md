@@ -3,8 +3,12 @@ Collection of code snippets from various programming and scripting languages.
 
 ## Bash
 
+#### tls_ciphers.sh
+A script to test SSL/TLS protocols supported by servers.
+This script uses openssl to make connections to the host provided.
+
 #### show_or_hide_files_mac.sh
-Simple script to toggle view files option on Mac OSX.
+Script to toggle view files option on Mac OSX.
 
 
 ## Python
