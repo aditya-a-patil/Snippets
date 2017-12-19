@@ -1,30 +1,23 @@
 #!/usr/bin/env python
 
 """Web Ping (web_ping.py)
-
 This script runs in an infinite loop, attempting to ping the given web link
 every 1 hour(or any interval specified) and determines if HTML page of the
 link has been changed since last ping. If a chnage is detected, an email is
 sent to the email address provided with changes and HTML content of updated
 page.
-
 When a new website is pinged, SHA256 hash is computed over the HTML and stored
 in a file with the name of the webpage. For every subsequent pings,
 file with previous hash is read and compared with new hash.
 If there is a change detected, an email is sent to alert the changes to the
 desired email address provided.
-
-
 Platform:
 * Ubuntu 16.04 running Python2.7.
-
 Usuage:
-
     web_ping.py -u <url>
                [-s <sender email>]
                [-r <recipient email>]
                [-h]
-
     <url> must be of format <*>://<*>/<*>
 """
 
@@ -36,6 +29,7 @@ import socket
 import urllib
 import datetime
 import time
+import logging
 import smtplib
 from email.MIMEMultipart import MIMEMultipart
 from email.MIMEText import MIMEText
@@ -55,16 +49,38 @@ recipient = ""
 #          SECURELY DURING RUNTIME.
 password = ""
 
+# Logger
+logging.basicConfig(filename="%s.log" %
+                    datetime.datetime.now().strftime("%Y-%m-%d"),
+                    format="%(asctime)s - %(levelname)s - %(message)s",
+                    datefmt='%a, %d %b %Y %H:%M:%S',
+                    level=logging.INFO)
+LOG_INFO = "INFO"
+LOG_ERR = "ERROR"
+LOG_DBG = "DEBUG"
 
-def print_to_console(msg):
-    """Print `msg` to console with current timestamp. """
-    print "%s : %s" % (datetime.datetime.now().strftime("%d.%b %Y %H:%M:%S"),
-                       msg)
+
+def print_to_console(msg, level=LOG_INFO):
+    """Log and print `msg` to console.
+    Message pre-pended by [*] denotes INFO and [!] denotes error.
+    Log file will contain timestamp for further analysis.
+    :param msg: String to be logged and printed.
+    :param level: Log level of the msg. INFO/ERROR/DEBUG/DOC.
+                  (optional) (Default - INFO)
+    """
+    if level == LOG_ERR:
+        logging.error(msg)
+        print "[!] %s" % msg
+    elif level == LOG_DBG:
+        logging.debug(msg)
+        print "[-] %s" % msg
+    else:
+        logging.info(msg)
+        print "[*] %s" % msg
 
 
 def check_internet_connectivity():
     """Connect to google.com and check if target is reachable or not.
-
     :return: `True` is internet is accessible else `False`.
     """
     server = "google.com"
@@ -86,7 +102,6 @@ def get_password():
     no password is hardcoded.
     Once the password is input, Begin test email is sent to receipent
     as a verification of credentails and connectivity.
-
     :return: `True` if email is sent successfully else `False`.
     """
     global password
@@ -103,7 +118,6 @@ def get_password():
 
 def email(subject="", body_text="", body_html=""):
     """Send email with subject and body provided.
-
     :param subject: Subject line of email. (optional)
                     (If left blank default subject line will be used)
     :param body_text: Body of email which will be embedded as plain text.
@@ -135,7 +149,6 @@ def email(subject="", body_text="", body_html=""):
 
 def get_filename():
     """Extract filename from webline provided as: *://WEBLINK/*
-
     :return: `True` if legal urlis provided else `False`.
     """
     try:
@@ -148,7 +161,6 @@ def get_filename():
 
 def write_file(content, isHTML=False):
     """Write hash to FILENMAE.
-
     :param content: Hash to write in file.
     :param isHTML: Flag for HTML content. (optional)
                    (`True` if HTML content else `False`)
@@ -171,7 +183,6 @@ def write_file(content, isHTML=False):
 
 def read_hash():
     """Return hash from FILENAME in hex.
-
     :return: Hash stored in `FILENAME`.
     """
     try:
@@ -187,7 +198,6 @@ def read_hash():
 def cmp_hash(old_hash, new_hash, html):
     """Compare new hash with old hash from FILENAME and overwrite
     if not matching.
-
     :param old_hash: Previous hash stored in file.
     :param new_hash: New hash computed.
     :param html: HTML code of the page.
@@ -228,7 +238,6 @@ def cmp_hash(old_hash, new_hash, html):
 
 def calc_hash(msg):
     """Compute and return SHA256 over msg.
-
     :param msg: Message over which hash is to be computed.
     :return: SHA256 Hex of `msg`.
     """
@@ -249,12 +258,18 @@ def begin_ping():
                 else:
                     if write_file(html_hash):
                         if not write_file(html, isHTML=True):
-                            print_to_console("Error in writing html to file.")
+                            print_to_console("Error in writing html to file.",
+                                             level=LOG_ERR)
                     else:
-                        print_to_console("Error in writing hash to file.")
+                        print_to_console("Error in writing hash to file.",
+                                         level=LOG_ERR)
             except Exception as e:
-                raise e
-            finally:
+                subject = "Error in pinging %s" % FILENAME
+                body = str(e)
+                print_to_console(body, level=LOG_ERR)
+                email(subject=subject, body_text=body)
+                sys.exit(0)
+            else:
                 time.sleep(PING_INTERVAL)
     except (KeyboardInterrupt, SystemExit):
         subject = "Ending ping to %s" % FILENAME
@@ -267,7 +282,7 @@ def main(argv):
     try:
         opts, args = getopt.getopt(argv, "hu:s:r:", ["url="])
     except getopt.GetoptError:
-        print_to_console(__doc__)
+        print __doc__
         sys.exit(2)
 
     if len(opts) == 0:
@@ -281,26 +296,37 @@ def main(argv):
         elif opt in ("-u", "--url"):
             global WEBLINK
             WEBLINK = arg
+            print_to_console("WEBLINK updated to: %s" % WEBLINK,
+                             level=LOG_DBG)
             if not get_filename():
-                print_to_console("Error. URL must be of format *://*/*")
+                print_to_console("Error. URL must be of format *://*/*",
+                                 level=LOG_ERR)
                 sys.exit()
         elif opt in ("-s"):
             global sender
             sender = arg
+            print_to_console("Sender email updated to: %s" % sender,
+                             level=LOG_DBG)
         elif opt in ("-r"):
             global recipient
             recipient = arg
+            print_to_console("Recipient email updated to: %s" % recipient,
+                             level=LOG_DBG)
 
-        if check_internet_connectivity():
-            if get_password():
-                begin_ping()
-            else:
-                print_to_console("Error in connecting to email server.")
-                sys.exit()
+    if check_internet_connectivity():
+        if get_password():
+            begin_ping()
         else:
-            print_to_console("Error in connecting to internet.")
+            print_to_console("Error in connecting to email server for %s"
+                             % sender,
+                             level=LOG_ERR)
             sys.exit()
+    else:
+        print_to_console("Error in connecting to internet.",
+                         level=LOG_ERR)
+        sys.exit()
 
 
 if __name__ == '__main__':
+    print_to_console("START")
     main(sys.argv[1:])
